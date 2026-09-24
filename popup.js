@@ -13,6 +13,8 @@ const DEFAULT_CONFIG = {
 };
 
 const LEGACY_DEFAULT_PROMPT_MARKER = "You are a careful web page summarizer.";
+const PRIVACY_CONSENT_KEY = "privacyConsent";
+const PRIVACY_CONSENT_VERSION = 1;
 
 const elements = {
   homeView: document.getElementById("home-view"),
@@ -31,6 +33,7 @@ const elements = {
   pageTitle: document.getElementById("page-title"),
   pageUrl: document.getElementById("page-url"),
   summarizeButton: document.getElementById("summarize-button"),
+  privacyConsent: document.getElementById("privacy-consent"),
   loadingState: document.getElementById("loading-state"),
   errorState: document.getElementById("error-state"),
   errorMessage: document.getElementById("error-message"),
@@ -43,6 +46,8 @@ const elements = {
 let currentTab = null;
 let lastSummary = "";
 let isBusy = false;
+let currentConfig = { ...DEFAULT_CONFIG };
+let privacyConsentAccepted = false;
 
 bindEvents();
 initialize();
@@ -53,12 +58,20 @@ function bindEvents() {
   elements.cancelSettingsButton.addEventListener("click", closeSettings);
   elements.settingsForm.addEventListener("submit", saveSettings);
   elements.toggleKeyButton.addEventListener("click", toggleApiKeyVisibility);
+  elements.privacyConsent.addEventListener("change", savePrivacyConsent);
   elements.summarizeButton.addEventListener("click", summarizeActivePage);
   elements.copyButton.addEventListener("click", copySummary);
 }
 
 async function initialize() {
-  const [config] = await Promise.all([loadConfig(), refreshActiveTab()]);
+  const [config, consent] = await Promise.all([
+    loadConfig(),
+    loadPrivacyConsent(),
+    refreshActiveTab()
+  ]);
+  currentConfig = config;
+  privacyConsentAccepted = consent;
+  elements.privacyConsent.checked = consent;
   fillSettings(config);
 }
 
@@ -68,6 +81,35 @@ async function loadConfig() {
     return normalizeConfig(stored.config);
   } catch {
     return { ...DEFAULT_CONFIG };
+  }
+}
+
+async function loadPrivacyConsent() {
+  try {
+    const stored = await chrome.storage.local.get(PRIVACY_CONSENT_KEY);
+    return Number(stored[PRIVACY_CONSENT_KEY]?.version) === PRIVACY_CONSENT_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+async function savePrivacyConsent() {
+  privacyConsentAccepted = elements.privacyConsent.checked;
+
+  try {
+    if (privacyConsentAccepted) {
+      await chrome.storage.local.set({
+        [PRIVACY_CONSENT_KEY]: {
+          version: PRIVACY_CONSENT_VERSION,
+          acceptedAt: new Date().toISOString()
+        }
+      });
+    } else {
+      await chrome.storage.local.remove(PRIVACY_CONSENT_KEY);
+    }
+  } catch {
+    privacyConsentAccepted = false;
+    elements.privacyConsent.checked = false;
   }
 }
 
@@ -122,6 +164,41 @@ function showPageInfo(title, url, supported) {
 
 async function summarizeActivePage() {
   if (elements.summarizeButton.disabled) {
+    return;
+  }
+
+  if (!currentTab?.id || !isHttpUrl(currentTab.url || "")) {
+    showError("قبل از خلاصه‌سازی، یک صفحهٔ وب معمولی باز کنید.");
+    return;
+  }
+
+  if (!privacyConsentAccepted) {
+    showError("برای ارسال متن صفحه، ابتدا رضایت و نحوهٔ استفاده از داده‌ها را تأیید کنید.");
+    elements.privacyConsent.focus();
+    return;
+  }
+
+  const permissionPattern = getEndpointPermissionPattern(currentConfig.endpoint);
+  if (!permissionPattern) {
+    openSettings();
+    setSettingsStatus("نشانی API معتبر نیست. برای سرویس آنلاین HTTPS و برای مدل محلی localhost یا 127.0.0.1 وارد کنید.", true);
+    elements.endpointInput.focus();
+    return;
+  }
+
+  // This must remain in the click handler so Chrome can show the host-permission prompt.
+  let permissionGranted;
+  try {
+    permissionGranted = await chrome.permissions.request({
+      origins: [permissionPattern]
+    });
+  } catch {
+    showError("اجازهٔ اتصال به سرویس API دریافت نشد. تنظیمات مرورگر را بررسی کنید.");
+    return;
+  }
+
+  if (!permissionGranted) {
+    showError("برای اتصال به سرویس API انتخابی، اجازهٔ دسترسی لازم است.");
     return;
   }
 
@@ -210,7 +287,7 @@ async function saveSettings(event) {
   }
 
   if (!isValidEndpoint(config.endpoint)) {
-    setSettingsStatus("یک نشانی معتبر با http:// یا https:// وارد کنید.", true);
+    setSettingsStatus("برای API آنلاین فقط HTTPS و برای مدل محلی فقط localhost یا 127.0.0.1 مجاز است.", true);
     elements.endpointInput.focus();
     return;
   }
@@ -228,7 +305,10 @@ async function saveSettings(event) {
   }
 
   try {
+    const previousEndpoint = currentConfig.endpoint;
     await chrome.storage.local.set({ config });
+    currentConfig = config;
+    await removeStaleEndpointPermission(previousEndpoint, config.endpoint);
     setSettingsStatus("تنظیمات ذخیره شد.");
     window.setTimeout(() => {
       if (!elements.settingsView.hidden) {
@@ -237,6 +317,20 @@ async function saveSettings(event) {
     }, 450);
   } catch {
     setSettingsStatus("ذخیرهٔ تنظیمات ممکن نشد.", true);
+  }
+}
+
+async function removeStaleEndpointPermission(previousValue, nextValue) {
+  const previousPattern = getEndpointPermissionPattern(previousValue);
+  const nextPattern = getEndpointPermissionPattern(nextValue);
+  if (!previousPattern || previousPattern === nextPattern) {
+    return;
+  }
+
+  try {
+    await chrome.permissions.remove({ origins: [previousPattern] });
+  } catch {
+    // Permission cleanup is best effort and must not prevent saving settings.
   }
 }
 
@@ -288,13 +382,28 @@ function isHttpUrl(value) {
   }
 }
 
-function isValidEndpoint(value) {
+function getEndpointPermissionPattern(value) {
   try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    const url = new URL(String(value || "").trim());
+    if (url.username || url.password) {
+      return null;
+    }
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHostname(url.hostname))) {
+      return null;
+    }
+    return `${url.protocol}//${url.hostname}/*`;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isLoopbackHostname(hostname) {
+  const normalized = String(hostname || "").toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1";
+}
+
+function isValidEndpoint(value) {
+  return Boolean(getEndpointPermissionPattern(value));
 }
 
 function prettyUrl(value) {

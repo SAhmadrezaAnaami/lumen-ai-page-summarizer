@@ -290,6 +290,44 @@ button:disabled {
   box-shadow: none;
 }
 
+.consent-panel {
+  margin-top: 12px;
+  padding: 10px 11px;
+  border: 1px solid #e2e7f2;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.consent-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: #65728b;
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.consent-check input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  margin: 1px 0 0;
+  accent-color: var(--purple);
+}
+
+.privacy-link {
+  display: inline-block;
+  margin: 6px 22px 0 0;
+  color: #6258c8;
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.privacy-link:hover {
+  text-decoration: underline;
+}
+
 .button-sparkle {
   font-size: 19px;
   font-weight: 400;
