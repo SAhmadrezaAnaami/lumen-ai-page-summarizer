@@ -1,0 +1,25 @@
+# Local secrets and scratch files
+text
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Generated extension packages
+*.zip
+*.crx
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# JavaScript tooling
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
