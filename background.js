@@ -235,6 +235,11 @@ function extractPageContent() {
 
 async function requestSummary(config, page) {
   const endpoint = normalizeEndpoint(config.endpoint);
+  const permissionPattern = getEndpointPermissionPattern(endpoint);
+  if (!permissionPattern || !(await hasEndpointPermission(permissionPattern))) {
+    throw new Error("برای اتصال به سرویس API انتخابی، اجازهٔ دسترسی لازم است.");
+  }
+
   const apiKey = String(config.apiKey || "").trim();
   const headers = { "Content-Type": "application/json" };
 
@@ -305,11 +310,15 @@ function normalizeEndpoint(value) {
   try {
     url = new URL(raw);
   } catch {
-    throw new Error("در تنظیمات یک نشانی معتبر HTTP یا HTTPS برای API وارد کنید.");
+    throw new Error("در تنظیمات یک نشانی معتبر HTTPS و برای مدل محلی localhost یا 127.0.0.1 وارد کنید.");
   }
 
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("نشانی API باید از HTTP یا HTTPS استفاده کند.");
+  if (url.username || url.password) {
+    throw new Error("اطلاعات ورود نباید در نشانی API قرار بگیرد.");
+  }
+
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHostname(url.hostname))) {
+    throw new Error("برای API آنلاین از HTTPS و برای مدل محلی از localhost یا 127.0.0.1 استفاده کنید.");
   }
 
   const path = url.pathname.replace(/\/+$/, "");
@@ -320,6 +329,34 @@ function normalizeEndpoint(value) {
   }
 
   return url.toString();
+}
+
+function getEndpointPermissionPattern(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (url.username || url.password) {
+      return null;
+    }
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHostname(url.hostname))) {
+      return null;
+    }
+    return `${url.protocol}//${url.hostname}/*`;
+  } catch {
+    return null;
+  }
+}
+
+async function hasEndpointPermission(pattern) {
+  try {
+    return await chrome.permissions.contains({ origins: [pattern] });
+  } catch {
+    return false;
+  }
+}
+
+function isLoopbackHostname(hostname) {
+  const normalized = String(hostname || "").toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1";
 }
 
 function buildPagePrompt(page) {

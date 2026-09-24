@@ -53,6 +53,16 @@
           </svg>
         </button>
 
+        <div class="consent-panel">
+          <label class="consent-check" for="privacy-consent">
+            <input id="privacy-consent" type="checkbox" aria-describedby="privacy-consent-text" />
+            <span id="privacy-consent-text">
+              می‌دانم که عنوان، نشانی و متن قابل‌خواندن صفحه به نشانی API انتخابی ارسال می‌شود.
+            </span>
+          </label>
+          <a class="privacy-link" href="privacy.html" target="_blank" rel="noopener noreferrer">مشاهدهٔ سیاست حفظ حریم خصوصی</a>
+        </div>
+
         <div id="loading-state" class="loading-card" hidden aria-live="polite">
           <span class="spinner" aria-hidden="true"></span>
           <div>
@@ -95,7 +105,7 @@
             <path d="M10 2.5 16 4.7v4.45c0 3.7-2.55 6.75-6 8.35-3.45-1.6-6-4.65-6-8.35V4.7L10 2.5Z" />
             <path d="m7.3 10 1.75 1.75L13 7.8" />
           </svg>
-          کلید API در همین مرورگر می‌ماند. متن صفحه فقط به مدل انتخابی شما ارسال می‌شود.
+          کلید API در همین مرورگر می‌ماند. متن صفحه فقط پس از تأیید شما به سرویس API انتخابی ارسال می‌شود.
         </p>
       </section>
 
@@ -113,6 +123,7 @@
         <form id="settings-form" novalidate>
           <label class="field-label" for="endpoint-input">نشانی تکمیل چت</label>
           <input id="endpoint-input" class="text-input" type="url" inputmode="url" autocomplete="url" spellcheck="false" dir="ltr" placeholder="https://api.openai.com/v1/chat/completions" required />
+          <p class="field-help">برای سرویس آنلاین از HTTPS استفاده کنید؛ HTTP فقط برای localhost یا 127.0.0.1 و مدل محلی مجاز است.</p>
 
           <label class="field-label" for="api-key-input">کلید API <span class="optional">برای مدل‌های محلی اختیاری</span></label>
           <div class="secret-input">
