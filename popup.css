@@ -316,6 +316,12 @@ button:disabled {
   accent-color: var(--purple);
 }
 
+.consent-check strong {
+  color: #4d43b5;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
 .privacy-link {
   display: inline-block;
   margin: 6px 22px 0 0;

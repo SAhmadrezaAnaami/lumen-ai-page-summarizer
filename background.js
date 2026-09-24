@@ -14,6 +14,9 @@ const DEFAULT_CONFIG = Object.freeze({
 
 const REQUEST_TIMEOUT_MS = 60000;
 const LEGACY_DEFAULT_PROMPT_MARKER = "You are a careful web page summarizer.";
+const PRIVACY_CONSENT_KEY = "privacyConsent";
+// Keep this version in sync with popup.js.
+const PRIVACY_CONSENT_VERSION = 1;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local
@@ -55,6 +58,11 @@ async function summarizePage(tabId) {
     throw new Error("این صفحه قابل خلاصه‌سازی نیست. ابتدا یک وب‌سایت معمولی باز کنید.");
   }
 
+  if (!(await hasPrivacyConsent())) {
+    throw new Error("برای ارسال متن صفحه، ابتدا رضایت و نحوهٔ استفاده از داده‌ها را تأیید کنید.");
+  }
+
+  const config = await getConfig();
   let page;
   try {
     page = await readPage(tabId);
@@ -69,7 +77,6 @@ async function summarizePage(tabId) {
     throw new Error("متن خوانای کافی در این صفحه پیدا نشد.");
   }
 
-  const config = await getConfig();
   const summary = await requestSummary(config, page);
 
   return {
@@ -83,6 +90,15 @@ async function summarizePage(tabId) {
 async function getConfig() {
   const stored = await chrome.storage.local.get("config");
   return normalizeConfig(stored.config);
+}
+
+async function hasPrivacyConsent() {
+  try {
+    const stored = await chrome.storage.local.get(PRIVACY_CONSENT_KEY);
+    return Number(stored[PRIVACY_CONSENT_KEY]?.version) === PRIVACY_CONSENT_VERSION;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeConfig(config) {
@@ -340,7 +356,7 @@ function getEndpointPermissionPattern(value) {
     if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHostname(url.hostname))) {
       return null;
     }
-    return `${url.protocol}//${url.hostname}/*`;
+    return `${url.origin}/*`;
   } catch {
     return null;
   }

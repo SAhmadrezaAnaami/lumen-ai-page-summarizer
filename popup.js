@@ -14,6 +14,7 @@ const DEFAULT_CONFIG = {
 
 const LEGACY_DEFAULT_PROMPT_MARKER = "You are a careful web page summarizer.";
 const PRIVACY_CONSENT_KEY = "privacyConsent";
+// Increment this when the privacy notice changes materially.
 const PRIVACY_CONSENT_VERSION = 1;
 
 const elements = {
@@ -34,6 +35,7 @@ const elements = {
   pageUrl: document.getElementById("page-url"),
   summarizeButton: document.getElementById("summarize-button"),
   privacyConsent: document.getElementById("privacy-consent"),
+  privacyConsentEndpoint: document.getElementById("privacy-consent-endpoint"),
   loadingState: document.getElementById("loading-state"),
   errorState: document.getElementById("error-state"),
   errorMessage: document.getElementById("error-message"),
@@ -66,12 +68,13 @@ function bindEvents() {
 async function initialize() {
   const [config, consent] = await Promise.all([
     loadConfig(),
-    loadPrivacyConsent(),
-    refreshActiveTab()
+    loadPrivacyConsent()
   ]);
+  await refreshActiveTab();
   currentConfig = config;
   privacyConsentAccepted = consent;
   elements.privacyConsent.checked = consent;
+  updateConsentEndpoint(config.endpoint);
   fillSettings(config);
 }
 
@@ -106,6 +109,7 @@ async function savePrivacyConsent() {
       });
     } else {
       await chrome.storage.local.remove(PRIVACY_CONSENT_KEY);
+      await removeStaleEndpointPermission(currentConfig.endpoint, "");
     }
   } catch {
     privacyConsentAccepted = false;
@@ -129,6 +133,21 @@ function fillSettings(config) {
   elements.apiKeyInput.value = config.apiKey || "";
   elements.modelInput.value = config.model || DEFAULT_CONFIG.model;
   elements.promptInput.value = config.systemPrompt || DEFAULT_CONFIG.systemPrompt;
+}
+
+function updateConsentEndpoint(endpoint) {
+  const pattern = getEndpointPermissionPattern(endpoint);
+  let label = "سرویس API انتخابی";
+
+  if (pattern) {
+    try {
+      label = new URL(String(endpoint).trim()).host;
+    } catch {
+      // Keep the generic label for an invalid endpoint.
+    }
+  }
+
+  elements.privacyConsentEndpoint.textContent = label;
 }
 
 async function refreshActiveTab() {
@@ -308,6 +327,7 @@ async function saveSettings(event) {
     const previousEndpoint = currentConfig.endpoint;
     await chrome.storage.local.set({ config });
     currentConfig = config;
+    updateConsentEndpoint(config.endpoint);
     await removeStaleEndpointPermission(previousEndpoint, config.endpoint);
     setSettingsStatus("تنظیمات ذخیره شد.");
     window.setTimeout(() => {
@@ -391,7 +411,7 @@ function getEndpointPermissionPattern(value) {
     if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopbackHostname(url.hostname))) {
       return null;
     }
-    return `${url.protocol}//${url.hostname}/*`;
+    return `${url.origin}/*`;
   } catch {
     return null;
   }
